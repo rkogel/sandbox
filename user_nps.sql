@@ -6,7 +6,7 @@ select ucf.courseid,
 			 cs.title as subcategory,
 			 cc.title as category,
 			 course.userid as instructorid,
-			 course.ispremium,
+			 ue.course_was_premium,
 			 case when ucl.oauth2clientid =1 then 'web' when ucl.oauth2clientid =5 then 'iOS app' when ucl.oauth2clientid =202 then 'Android app' else 'mini-apps & other' end as device,
 			 ue.paid_amount as pricepaid
 
