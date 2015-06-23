@@ -1,39 +1,14 @@
-select con.*,
-			 coalesce(note.count,0) as notes,
-			 coalesce(cd.count,0) + coalesce(cdr.count,0) as discussions
-from
-	(
-	select upl.userid,
-				 upl.courseid,
-				 date(upl.created),
-				 count(1)*.25 as minconsumed,
-				 count(case when upl.clientid =1 or udv.device = 'web' then 1 end)*.25 as webminutes
-			 	-- add 1 column for min consumed of new content
-	from user_progressed_lecture upl	
-	left join user_daily_visit_before021015 udv on udv.userid = upl.userid and udv.date = date(upl.created)
-	where upl.total >1
-	group by 1,2,3
-	) con
-left join
-	(
-	select userid, courseid, date(created), count(1)
-	from note
-	group by 1,2,3
-	) note
-	on note.userid = con.userid and note.courseid = con.courseid and note.date = con.date
-left join
-	(
-	select userid, courseid, date(created), count(1)
-	from course_discussion
-	group by 1,2,3
-	) cd
-	on cd.userid = con.userid and cd.courseid = con.courseid and cd.date = con.date
-left join
-	(
-	select cdr.userid, cd.courseid, date(cdr.created), count(1)
-	from course_discussion_reply cdr, course_discussion cd
-	where cdr.discussionid = cd.id
-	group by 1,2,3
-	) cdr
-	on cdr.userid = con.userid and cdr.courseid = con.courseid and cdr.date = con.date
-;
+select userid,
+			 courseid,
+			 date(created),
+			 case when clientid =-2  then 'iOS Web'
+			 			when clientid =-2  then 'Android Web'
+				 		when clientid =1   then 'Web'
+				 		when clientid =5   then 'iOS'
+				 		when clientid =202 then 'Android' else 'mini-apps' end as device,
+			 case when rank=1 then true else false end as is_first_watch,
+			 isofflineprogress as is_offline,
+			 isbackgroundprogress as is_running_in_background,
+			 count(1)*.25 as minconsumed
+from (select *, rank() over(partition by userid, courseid, assetid order by created) from user_progressed_lecture where total >1 and created < current_date)
+group by 1,2,3,4,5,6,7
