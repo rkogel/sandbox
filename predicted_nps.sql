@@ -36,7 +36,7 @@ con as
                 group by 1
         )
 
-select a.courseid, a.nps_con_error, erf_con.odd, a.nps_rating_error, erf_rating.odd, a.raw_nps_error, erf_nps.odd,
+select a.courseid,
        ((case when a.nps_qscore is null then a.nps_con else (a.nps_qscore + a.nps_con)*0.5 end)*erf_con.odd + coalesce(a.nps_rating*erf_rating.odd,0) + coalesce(a.raw_nps*erf_nps.odd,0))/(erf_con.odd + coalesce(erf_rating.odd,0) + coalesce(erf_nps.odd,0)) as predicted_nps,
        least(a.nps_con_error, a.nps_rating_error, a.raw_nps_error) as predicted_nps_error
 from
