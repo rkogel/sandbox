@@ -11,8 +11,11 @@ with cr as
                                  order by modified asc rows unbounded preceding) as avg_course_rating_at_time_of_review,
            count(1) over (partition by courseid
                                   order by modified asc rows unbounded preceding) as num_course_reviews_at_time_of_review,
+           avg(is_spam) over(partition by courseid
+                                 order by modified asc rows unbounded preceding) as course_spam_pct_at_time_review,
            avg(rating) over (partition by userid) as avg_student_rating,
            count(1) over(partition by userid) as num_student_reviews,
+           avg(is_spam) over(partition by userid) as student_spam_pct,
            count(1) over(partition by userid, date(created)) as num_reviews_per_student_per_day
     from raw_data.course_review
     where location in ('dashboard',
@@ -24,13 +27,13 @@ select * from (
 select 
 -- review and enrollment characteristics
        cr.*,
-       log(greatest(cr.num_course_reviews_at_time_of_review, 1)) as log_number_course_reviews_at_time_of_review,
+       log(greatest(cr.num_course_reviews_at_time_of_review, 1)) as logged_number_course_reviews_at_time_of_review,
        coalesce(ue.paid_amount, 0) as paid_amount,
        coalesce(ue.is_refund, FALSE) as is_refund,
        ue.coupon_code,
        coalesce(ue.course_was_premium, FALSE) as course_was_premium,
        ue.enrollment_created,
-       row_number() over (partition by cr.review_id),
+       row_number() over (partition by cr.review_id),￼
        log(greatest(cast(cons.min_consumed as double precision), 1)) as logged_consumption,
 
 -- student characteristic
@@ -43,22 +46,17 @@ select
        case when ii.instructor_userid is not null then 1 else 0 end as is_reviewer_instructor,
        coalesce(v.count, 1) as num_userid_created_by_this_visitorid,
        coalesce(coupon.num_suspect_coupons, 0) as num_suspect_coupons,
-        -- needs fix coalesce(s.number_days_more_3_reviews,0) as number_days_more_3_reviews,
-       ue_student.student_num_paid_enrollments,
+       coalesce(review_frequency.number_days_more_3_reviews, 0) as number_days_more_3_reviews,
+       ue_student.student_num_paid_enrollments as studen_paid_enrollments,
        ue_student.student_spend_udemy,
        cr.num_student_reviews / ue_student.student_num_enrollment as pct_student_enrollment_reviews,
 
 -- course characteristics
-       log(greatest(ue_course.course_enrollment_time_review, 1)) as log_course_enrollment_time_review,
-       log(greatest(ue_course.course_revenue_time_review, 1)) as log_course_revenue_time_review,
+       log(greatest(ue_course.course_enrollment_time_review, 1)) as log_total_course_enrollments_time_review,
+       log(greatest(ue_course.course_revenue_time_review, 1)) as logged_course_revenue,
        ue_course.pct_free_enrollments_course,
-       greatest(datediff('month', ci.first_approved_date, cr.modified), 0) as course_months_on_platform_time_of_review
+       greatest(datediff('month', ci.first_approved_date, cr.modified), 0) as course_months_on_platform_at_time_of_review
 
--- spam pct features (warning: recursive logic == not stable)
-       --coalesce(pct_spam_course,0) as pct_spam_course,
-       --coalesce(pct_spam_instructor,0) as pct_spam_instructor,
-       --coalesce(pct_spam_student,0) as pct_spam_student
-        
 ------------------
 --- source of data
 ------------------
@@ -184,9 +182,22 @@ left join
     ) ci
 on ci.courseid = cr.courseid
 
--- spam data
+-- instructor spam info at time of review
+left join
+   (select
+    from course_info ci,
+         cr
+    where ci.courseid = cr.courseid ) instructor_spam
+on instructor_spam.courseid = cr.courseid
 
+-- number of days with >= 3 reviews per student
+left join
+   (select userid,
+           count(distinct date(created)) as number_days_more_3_reviews
+    from cr
+    where num_reviews_per_student_per_day >= 3
+    group by 1 ) review_frequency
+on review_frequency.userid = cr.userid
 
-)
 limit 200
 --where row_number = 1 )
